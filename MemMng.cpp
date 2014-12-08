@@ -1,28 +1,10 @@
 #include "stdafx.h"
+#include "Memory_manager.h"
+#include "Memory_stat.h"
 #include <iostream>
 #include <windows.h>
 #include <time.h>
-#include <stdlib.h>
-//using namespace System;
 using namespace std;
-
-#define mem_size 10*1024*1024 //размер(в байтах) памяти
-#define min_var_size 16 //минимальный размер переменной
-#define max_var_size 16*1024//маскимальный размер переменной
-
-static char mem[mem_size];//массив-память из которой выделяются переменные
-static bool init=false;//флаг инициализации
-/*структура метаданных*/
-#pragma pack(1)
-struct mem_block
-{
-	char is_available;
-	unsigned int size;
-};
-#pragma pack()
-/*переменные для хранения информации о размерах занятой памяти*/
-static unsigned long allocated_memory=0;
-static unsigned long size_meta_info=0;
 static struct t_s
 {
 	double av_time_al;//среднее время выделения памяти
@@ -32,135 +14,6 @@ static struct t_s
 	double min_time_free;//минимальное
 	double max_time_free;//макисмальное
 }time_stat={0,100000000,0,0,100000000,0};
-/*
-Описание:Функция для освобождения выделенной памяти
-Параметры: void* m- указатель на переменную,память от которой необходимо освободить
-Возвращаяемое значение:-
-*/
-void free(void* m)
-{
-	if(m){
-	struct mem_block *mb;
-	mb=(mem_block*)((char*)m-sizeof(mem_block));
-	mb->is_available=1;}
-	return;
-}
-/*
-Описание:Функция для выделения памяти
-Параметры: int size- размер выделяемой памяти,возможные значения от 16 до 16384
-Возвращаяемое значение:Null в случае ошибки,указатель на память в случае успеха
-*/
-void*alloc(int size)
-{
-	if(!init)
-	{
-		mem_block *qq=(mem_block*)mem;
-		qq->is_available=1;
-		qq->size=mem_size-sizeof(mem_block);
-		init=true;
-	}
-	if(size<min_var_size||max_var_size<size)return NULL;//из задания минимальный блок 16 байт
-	
-
-	void* cur_loc=mem;//текущая позиция в массиве,ее возвращаем
-	void* buf_loc=0;//указатель для объединения блоков
-	int buf_size=-1;//сумма блоков для объединения
-	while (cur_loc<mem+mem_size)
-	{
-		mem_block *mb=(mem_block*)cur_loc;
-		if(mb->is_available)
-		{
-			if(!buf_loc)  buf_loc=cur_loc;
-
-			if(mb->size==size)
-			{
-				mb->is_available=0;
-				break;
-			}
-			if(mb->size>=size+sizeof(mem_block))
-			{
-				int odd_size=mb->size-size;
-				mb->is_available=0;
-				mb->size=size;
-				mb=(mem_block*)((char*)mb+(size+sizeof(mem_block)));
-				mb->is_available=1;
-				mb->size=odd_size-sizeof(mem_block);//!!!!!
-				break;
-			}
-			else
-				{
-					if(-1==buf_size) buf_size=((mem_block*)cur_loc)->size;else
-					buf_size+=((mem_block*)cur_loc)->size+sizeof(mem_block);
-				}
-		}
-			if(buf_size==size)
-			{
-				mb=(mem_block*)buf_loc;
-				mb->is_available=0;
-				mb->size=size;
-				cur_loc=buf_loc;
-				break;
-			}
-
-			if((int)(size+sizeof(mem_block))<=buf_size)
-				{
-					int odd_size=buf_size-size;
-					mb=(mem_block*)buf_loc;
-					mb->is_available=0;
-					mb->size=size;
-					mb=(mem_block*)((char*)mb+(size+sizeof(mem_block)));
-					mb->is_available=1;
-					mb->size=odd_size-sizeof(mem_block);//!!!!
-					cur_loc=buf_loc;
-					break;
-				}
-		
-			if(!mb->is_available)
-				{
-			buf_loc=0;
-			buf_size=-1;
-			}
-
-		cur_loc=(char*)cur_loc+mb->size+sizeof(mem_block);
-	}
-
-	if(cur_loc>=mem+mem_size) return NULL;
-	return (char*)cur_loc+sizeof(mem_block);
-}
-/*
-Описание:Получение информации о выделенной памяти
-Параметры: -
-Возвращаяемое значение:-
-*/
-void get_memory_info()
-{
-	allocated_memory=0;
-	size_meta_info=0;
-
-	if(init){
-	mem_block* mb=(mem_block*)mem;
-	while ((char*)mb<mem+mem_size)
-	{
-		if(!mb->is_available)
-			allocated_memory+=mb->size;
-		
-		size_meta_info++;
-		mb=(mem_block*)((char*)mb+(mb->size+sizeof(mem_block)));
-	}
-	size_meta_info*=sizeof(mem_block);
-	}
-}
-/*
-Описание:Получение и вывод информации о выделенной памяти
-Параметры: -
-Возвращаяемое значение:-
-*/
-void print_mem_info()
-{
-	get_memory_info();
-	printf("Avalible space: %u \n",mem_size-allocated_memory-size_meta_info);
-	printf("Busy space: %u \n",allocated_memory+size_meta_info);
-}
 /*
 Описание:Функция для получения количества тиков процессора со времени старта системы
 Параметры: 
@@ -180,9 +33,12 @@ long long get_time()
 }
 void main()
 {
+	/*
+	TODO:обрезать слишком большие значения time_stamp'ов
+	*/
 	LARGE_INTEGER f;//получние частоты работы CPU для замеров времени выполнения
 	QueryPerformanceFrequency(&f);
-	double Frequency=f.LowPart;
+	double Frequency=f.LowPart/1000;
 	/*
 	Создание большого массива массивов для выделения под них блоков памяти случайного размера
 	*/
@@ -203,49 +59,66 @@ void main()
 	Сбор статистики по времени выполнения операций выделения и освобождения
 	*/
 	int counter=0;
+	int err_counter_f=0;
+	int err_counter_a=0;
+	bool init_time_stat=false;
 	long start_time=clock();
+	long double time_stamp;
 	while (allocated_memory<mem_size)
 	{
 		int size=rand();
 
-		long double time_stamp=get_time();
-			free(mass[size%(i)]);
+		time_stamp=get_time();
+			freem(mass[size%(i)]);
 		time_stamp=(get_time()-time_stamp)/Frequency;
+
+		if(init_time_stat && time_stat.av_time_free/counter*5<time_stamp)err_counter_f++;else
+		{
 		time_stat.av_time_free+=time_stamp;
 		if(time_stat.max_time_free<time_stamp)time_stat.max_time_free=time_stamp;
 		if(time_stamp<time_stat.min_time_free)time_stat.min_time_free=time_stamp;
+		}
 
 		time_stamp=get_time();
 			mass[size%(i)]=(char*)alloc((double)(size)/RAND_MAX*(max_var_size-min_var_size)+min_var_size);
 		time_stamp=(get_time()-time_stamp)/Frequency;
+
+		if(init_time_stat && time_stat.av_time_al/counter*5<time_stamp)err_counter_a++;else
+		{
 		time_stat.av_time_al+=time_stamp;
 		if(time_stat.max_time_al<time_stamp)time_stat.max_time_al=time_stamp;
 		if(time_stamp<time_stat.min_time_al)time_stat.min_time_al=time_stamp;
-
-		if(!mass[size%(i)])
-		{
-			get_memory_info();
-			break;
 		}
+
+		if(!mass[size%(i)])	break;
+
 		counter++;
-		get_memory_info();
 		if(counter==100000)
 		{	
-			time_stat.av_time_free/=counter;
-			time_stat.av_time_al/=counter;
-			printf("Avarage time to free: %.8f\n",time_stat.av_time_free);
-			printf("Max time to free: %.8f\n",time_stat.max_time_free);
-			printf("Min time to free: %.8f\n",time_stat.min_time_free);
-			printf("Avarage time to alloc: %.8f\n",time_stat.av_time_al);
-			printf("Max time to alloc: %.8f\n",time_stat.max_time_al);
-			printf("Min time to alloc: %.8f\n",time_stat.min_time_al);
-			printf("Total time: %.4f\n\n",(double)(clock()-start_time)/1000);
-			counter=0;
+			time_stat.av_time_free/=(counter-err_counter_f);
+			time_stat.av_time_al/=(counter-err_counter_a);
+			printf("Avarage time to free: %.8f mcs\n",time_stat.av_time_free);
+			printf("Max time to free: %.8f mcs\n",time_stat.max_time_free);
+			printf("Min time to free: %.8f mcs\n",time_stat.min_time_free);
+			printf("Avarage time to alloc: %.8f mcs\n",time_stat.av_time_al);
+			printf("Max time to alloc: %.8f mcs\n",time_stat.max_time_al);
+			printf("Min time to alloc: %.8f mcs\n",time_stat.min_time_al);
+			printf("Total time: %.4f s\n\n",(double)(clock()-start_time)/1000);
+			counter=1;
+			err_counter_a=0;
+			err_counter_f=0;
 			start_time=clock();
 			print_mem_info();
+			if(!init_time_stat)
+			{
+				init_time_stat=true;
+				time_stat.max_time_free=-1;
+				time_stat.min_time_free=1000;
+				time_stat.max_time_al=-1;
+				time_stat.min_time_al=1000;
+			}
 		}
 	}
-	get_memory_info();
-	printf("\n%s%i\n","ERROR! Can't alloc memory!",counter);
+	printf("\n%s%i\n","ERROR! Can't alloc memory!\n",counter);
 	print_mem_info();
 }
