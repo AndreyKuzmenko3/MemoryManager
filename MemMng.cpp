@@ -4,7 +4,8 @@
 #include <iostream>
 #include <windows.h>
 #include <time.h>
-using namespace std;
+
+int SIZE_FOR_ALLOC[]={16,64,256,1024,4096,16384};
 static struct t_s
 {
 	double av_time_al;//среднее время выделения памяти
@@ -31,10 +32,11 @@ long long get_time()
         }
 	return t;
 }
-void main()
+void main(int argc, char *argv[])
 {
 	/*
-	TODO:обрезать слишком большие значения time_stamp'ов
+	TODO
+	выделение по другой стратегии
 	*/
 	LARGE_INTEGER f;//получние частоты работы CPU для замеров времени выполнения
 	QueryPerformanceFrequency(&f);
@@ -43,18 +45,22 @@ void main()
 	Создание большого массива массивов для выделения под них блоков памяти случайного размера
 	*/
 	srand ( time(NULL) );
-	const int var_mass_size=5000;
-	char* mass[var_mass_size];
-	int i;
-	for(i=0;i<var_mass_size&&allocated_memory<(mem_size/100*80);i++)
+	const int max_var_mass_count=5000;
+	char* mass[max_var_mass_count];
+	int var_mass_count;
+	for(var_mass_count=0;var_mass_count<max_var_mass_count && allocated_memory<(mem_size/100*80);var_mass_count++)
 	{
 		int size=(double)(rand())/RAND_MAX*(max_var_size-min_var_size)+min_var_size;
+
+		if(argv[1]!="")size=SIZE_FOR_ALLOC[size%6];
+
 		allocated_memory+=size+sizeof(mem_block);
-		mass[i]=(char*)alloc(size);
-		if(!mass[i])
+		mass[var_mass_count]=(char*)alloc(size);
+		if(!mass[var_mass_count])
 			printf("%s","ERROR! Can't alloc 80%");
 	} 
 	print_mem_info();
+	printf("%i",var_mass_count);
 	/*
 	Сбор статистики по времени выполнения операций выделения и освобождения
 	*/
@@ -69,7 +75,7 @@ void main()
 		int size=rand();
 
 		time_stamp=get_time();
-			freem(mass[size%(i)]);
+			freem(mass[size%(var_mass_count)]);
 		time_stamp=(get_time()-time_stamp)/Frequency;
 
 		if(init_time_stat && time_stat.av_time_free/counter*5<time_stamp)err_counter_f++;else
@@ -80,7 +86,14 @@ void main()
 		}
 
 		time_stamp=get_time();
-			mass[size%(i)]=(char*)alloc((double)(size)/RAND_MAX*(max_var_size-min_var_size)+min_var_size);
+
+		if(argv[1]!="")
+		{
+			int h=SIZE_FOR_ALLOC[size%6];
+			mass[size%(var_mass_count)]=(char*)alloc(h);
+		}
+		else
+			mass[size%(var_mass_count)]=(char*)alloc((double)(size)/RAND_MAX*(max_var_size-min_var_size)+min_var_size);
 		time_stamp=(get_time()-time_stamp)/Frequency;
 
 		if(init_time_stat && time_stat.av_time_al/counter*5<time_stamp)err_counter_a++;else
@@ -90,24 +103,23 @@ void main()
 		if(time_stamp<time_stat.min_time_al)time_stat.min_time_al=time_stamp;
 		}
 
-		if(!mass[size%(i)])	break;
+		if(!mass[size%(var_mass_count)])	break;
 
 		counter++;
 		if(counter==100000)
 		{	
 			time_stat.av_time_free/=(counter-err_counter_f);
 			time_stat.av_time_al/=(counter-err_counter_a);
-			printf("Avarage time to free: %.8f mcs\n",time_stat.av_time_free);
-			printf("Max time to free: %.8f mcs\n",time_stat.max_time_free);
-			printf("Min time to free: %.8f mcs\n",time_stat.min_time_free);
-			printf("Avarage time to alloc: %.8f mcs\n",time_stat.av_time_al);
-			printf("Max time to alloc: %.8f mcs\n",time_stat.max_time_al);
-			printf("Min time to alloc: %.8f mcs\n",time_stat.min_time_al);
+			printf("Avarage time to free: %.4f mcs\n",time_stat.av_time_free);
+			printf("Max time to free: %.4f mcs\n",time_stat.max_time_free);
+			printf("Min time to free: %.4f mcs\n",time_stat.min_time_free);
+			printf("Avarage time to alloc: %.4f mcs\n",time_stat.av_time_al);
+			printf("Max time to alloc: %.4f mcs\n",time_stat.max_time_al);
+			printf("Min time to alloc: %.4f mcs\n",time_stat.min_time_al);
 			printf("Total time: %.4f s\n\n",(double)(clock()-start_time)/1000);
 			counter=1;
 			err_counter_a=0;
 			err_counter_f=0;
-			start_time=clock();
 			print_mem_info();
 			if(!init_time_stat)
 			{
@@ -117,6 +129,7 @@ void main()
 				time_stat.max_time_al=-1;
 				time_stat.min_time_al=1000;
 			}
+			start_time=clock();
 		}
 	}
 	printf("\n%s%i\n","ERROR! Can't alloc memory!\n",counter);
