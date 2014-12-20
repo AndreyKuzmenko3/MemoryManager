@@ -34,16 +34,11 @@ long long get_time()
 }
 void main(int argc, char *argv[])
 {
-	/*
-	TODO
-	выделение по другой стратегии
-	*/
 	LARGE_INTEGER f;//получние частоты работы CPU для замеров времени выполнения
 	QueryPerformanceFrequency(&f);
 	double Frequency=f.LowPart/1000;
-	/*
-	Создание большого массива массивов для выделения под них блоков памяти случайного размера
-	*/
+
+	////Создание большого массива массивов для выделения под них блоков памяти случайного размера
 	srand ( time(NULL) );
 	const int max_var_mass_count=5000;
 	char* mass[max_var_mass_count];
@@ -52,7 +47,7 @@ void main(int argc, char *argv[])
 	{
 		int size=(double)(rand())/RAND_MAX*(max_var_size-min_var_size)+min_var_size;
 
-		if(argv[1]!="")size=SIZE_FOR_ALLOC[size%6];
+		if(argc!=1)size=SIZE_FOR_ALLOC[size%6];
 
 		allocated_memory+=size+sizeof(mem_block);
 		mass[var_mass_count]=(char*)alloc(size);
@@ -60,10 +55,8 @@ void main(int argc, char *argv[])
 			printf("%s","ERROR! Can't alloc 80%");
 	} 
 	print_mem_info();
-	printf("%i",var_mass_count);
-	/*
-	Сбор статистики по времени выполнения операций выделения и освобождения
-	*/
+
+	////Сбор статистики по времени выполнения операций выделения и освобождения
 	int counter=0;
 	int err_counter_f=0;
 	int err_counter_a=0;
@@ -87,11 +80,7 @@ void main(int argc, char *argv[])
 
 		time_stamp=get_time();
 
-		if(argv[1]!="")
-		{
-			int h=SIZE_FOR_ALLOC[size%6];
-			mass[size%(var_mass_count)]=(char*)alloc(h);
-		}
+		if(argc!=1)		mass[size%(var_mass_count)]=(char*)alloc(SIZE_FOR_ALLOC[size%6]);
 		else
 			mass[size%(var_mass_count)]=(char*)alloc((double)(size)/RAND_MAX*(max_var_size-min_var_size)+min_var_size);
 		time_stamp=(get_time()-time_stamp)/Frequency;
